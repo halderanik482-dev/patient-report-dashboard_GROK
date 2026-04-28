@@ -1,5 +1,5 @@
 import streamlit as st
-from openai import OpenAI
+from groq import Groq
 import json
 from PyPDF2 import PdfReader
 import base64
@@ -14,30 +14,12 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- INITIALIZE xAI (GROK) API & FOOLPROOF MODEL DISCOVERY ---
+# --- INITIALIZE GROQ API ---
 try:
-    api_key = st.secrets["XAI_API_KEY"]
-    client = OpenAI(
-        api_key=api_key,
-        base_url="https://api.x.ai/v1",
-    )
-    
-    # 1. Ask xAI exactly which models your key is allowed to use
-    model_list = client.models.list().data
-    available_models = [m.id for m in model_list]
-    
-    # 2. Auto-select the best text model (prefer grok-2 or grok-beta)
-    text_model = next((m for m in available_models if "grok-2" in m and "vision" not in m), 
-                 next((m for m in available_models if "grok-beta" in m), available_models[0]))
-                 
-    # 3. Auto-select the best vision model
-    vision_model = next((m for m in available_models if "vision" in m), text_model)
-
+    api_key = st.secrets["GROQ_API_KEY"]
+    client = Groq(api_key=api_key)
 except KeyError:
-    st.error("🚨 System Error: XAI_API_KEY not found in Secrets. Please configure the app settings.")
-    st.stop()
-except Exception as e:
-    st.error(f"API Connection Error: {e}")
+    st.error("🚨 System Error: GROQ_API_KEY not found in Secrets. Please configure the app settings.")
     st.stop()
 
 # --- HELPER FUNCTIONS ---
@@ -62,8 +44,9 @@ def analyze_report(content, file_type="text"):
     
     try:
         if file_type == "text":
+            # Using Meta's free Llama 3 model for text
             response = client.chat.completions.create(
-                model=text_model,
+                model="llama3-70b-8192",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"Here is the medical report text:\n\n{content}"}
@@ -71,9 +54,10 @@ def analyze_report(content, file_type="text"):
                 response_format={"type": "json_object"}
             )
         else:
+            # Using Groq's Vision model for images
             base64_image = base64.b64encode(content).decode('utf-8')
             response = client.chat.completions.create(
-                model=vision_model,
+                model="llama-3.2-11b-vision-preview",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {
@@ -92,18 +76,18 @@ def analyze_report(content, file_type="text"):
         return data.get("biomarkers", [])
         
     except Exception as e:
-        st.error(f"Error communicating with Grok AI: {e}")
+        st.error(f"Error communicating with Groq AI: {e}")
         return None
 
 # --- MAIN UI ---
 st.markdown("<div class='main-header'>🩺 MyHealth Insights</div>", unsafe_allow_html=True)
-st.markdown("<div class='sub-header'>Powered by xAI Grok. Upload your report to instantly see what needs attention.</div>", unsafe_allow_html=True)
+st.markdown("<div class='sub-header'>Powered by Groq AI. Upload your report to instantly see what needs attention.</div>", unsafe_allow_html=True)
 
 uploaded_file = st.file_uploader("Upload Report (PDF, JPG, PNG)", type=["pdf", "jpg", "jpeg", "png"])
 
 if uploaded_file:
     if st.button("Analyze My Report", type="primary", use_container_width=True):
-        with st.spinner("Grok is analyzing your report..."):
+        with st.spinner("Analyzing your report for free..."):
             
             # 1. Process File
             if uploaded_file.type == "application/pdf":
