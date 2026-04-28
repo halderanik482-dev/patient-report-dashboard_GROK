@@ -30,7 +30,7 @@ def extract_text_from_pdf(file):
         extracted = page.extract_text()
         if extracted:
             text += extracted + "\n"
-return text[:30000]
+return    text[:30000]
 
 def analyze_report(content, file_type="text"):
     system_prompt = """
