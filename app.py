@@ -1,5 +1,5 @@
 import streamlit as st
-from groq import Groq
+from openai import OpenAI
 import json
 from PyPDF2 import PdfReader
 import base64
@@ -7,7 +7,6 @@ import base64
 # --- PAGE CONFIGURATION ---
 st.set_page_config(page_title="MyHealth Insights", page_icon="🩺", layout="centered")
 
-# --- CUSTOM CSS ---
 st.markdown("""
     <style>
     .main-header { font-size: 2.5rem; font-weight: bold; color: #1E3A8A; text-align: center; }
@@ -15,12 +14,16 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- INITIALIZE GROQ API ---
+# --- INITIALIZE xAI (GROK) API ---
 try:
-    api_key = st.secrets["GROQ_API_KEY"]
-    client = Groq(api_key=api_key)
+    api_key = st.secrets["XAI_API_KEY"]
+    # xAI uses the OpenAI library, but we point it to the x.ai web address
+    client = OpenAI(
+        api_key=api_key,
+        base_url="https://api.x.ai/v1",
+    )
 except KeyError:
-    st.error("🚨 System Error: GROQ_API_KEY not found in Secrets. Please configure the app settings.")
+    st.error("🚨 System Error: XAI_API_KEY not found in Secrets. Please configure the app settings.")
     st.stop()
 
 # --- HELPER FUNCTIONS ---
@@ -44,19 +47,18 @@ def analyze_report(content, file_type="text"):
     
     try:
         if file_type == "text":
-            # Use Llama 3 70B for standard PDF text extraction
             response = client.chat.completions.create(
+                model="grok-2-latest",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"Here is the medical report text:\n\n{content}"}
                 ],
-                model="llama3-70b-8192",
                 response_format={"type": "json_object"}
             )
         else:
-            # Use Llama 3.2 Vision for Image Uploads
             base64_image = base64.b64encode(content).decode('utf-8')
             response = client.chat.completions.create(
+                model="grok-2-vision-latest",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {
@@ -67,35 +69,32 @@ def analyze_report(content, file_type="text"):
                         ]
                     }
                 ],
-                model="llama-3.2-11b-vision-preview",
                 response_format={"type": "json_object"}
             )
             
-        # Parse the JSON response securely
         result_string = response.choices[0].message.content
         data = json.loads(result_string)
         return data.get("biomarkers", [])
         
     except Exception as e:
-        st.error(f"Error communicating with Groq AI: {e}")
+        st.error(f"Error communicating with Grok AI: {e}")
         return None
 
 # --- MAIN UI ---
 st.markdown("<div class='main-header'>🩺 MyHealth Insights</div>", unsafe_allow_html=True)
-st.markdown("<div class='sub-header'>Powered by Groq AI. Upload your report to instantly see what needs attention.</div>", unsafe_allow_html=True)
+st.markdown("<div class='sub-header'>Powered by xAI Grok. Upload your report to instantly see what needs attention.</div>", unsafe_allow_html=True)
 
 uploaded_file = st.file_uploader("Upload Report (PDF, JPG, PNG)", type=["pdf", "jpg", "jpeg", "png"])
 
 if uploaded_file:
     if st.button("Analyze My Report", type="primary", use_container_width=True):
-        with st.spinner("Analyzing your report at lightning speed..."):
+        with st.spinner("Grok is analyzing your report..."):
             
             # 1. Process File
             if uploaded_file.type == "application/pdf":
                 content = extract_text_from_pdf(uploaded_file)
                 data = analyze_report(content, "text")
             else:
-                # Pass raw bytes for image processing
                 content = uploaded_file.getvalue()
                 data = analyze_report(content, "image")
             
@@ -104,7 +103,6 @@ if uploaded_file:
                 st.markdown("---")
                 st.subheader("Actionable Insights")
                 
-                # Filter for items outside normal range
                 action_items = [item for item in data if item.get('status', 'Normal') != 'Normal']
                 normal_items = [item for item in data if item.get('status', 'Normal') == 'Normal']
                 
