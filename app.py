@@ -46,7 +46,7 @@ def analyze_report(content, file_type="text"):
         if file_type == "text":
             # Using Meta's free Llama 3 model for text
             response = client.chat.completions.create(
-                model="llama3-70b-8192",
+                model="llama-3.3-70b-versatile",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"Here is the medical report text:\n\n{content}"}
