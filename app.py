@@ -14,16 +14,30 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- INITIALIZE xAI (GROK) API ---
+# --- INITIALIZE xAI (GROK) API & FOOLPROOF MODEL DISCOVERY ---
 try:
     api_key = st.secrets["XAI_API_KEY"]
-    # xAI uses the OpenAI library, but we point it to the x.ai web address
     client = OpenAI(
         api_key=api_key,
         base_url="https://api.x.ai/v1",
     )
+    
+    # 1. Ask xAI exactly which models your key is allowed to use
+    model_list = client.models.list().data
+    available_models = [m.id for m in model_list]
+    
+    # 2. Auto-select the best text model (prefer grok-2 or grok-beta)
+    text_model = next((m for m in available_models if "grok-2" in m and "vision" not in m), 
+                 next((m for m in available_models if "grok-beta" in m), available_models[0]))
+                 
+    # 3. Auto-select the best vision model
+    vision_model = next((m for m in available_models if "vision" in m), text_model)
+
 except KeyError:
     st.error("🚨 System Error: XAI_API_KEY not found in Secrets. Please configure the app settings.")
+    st.stop()
+except Exception as e:
+    st.error(f"API Connection Error: {e}")
     st.stop()
 
 # --- HELPER FUNCTIONS ---
@@ -31,8 +45,9 @@ def extract_text_from_pdf(file):
     pdf_reader = PdfReader(file)
     text = ""
     for page in pdf_reader.pages:
-        if page.extract_text():
-            text += page.extract_text() + "\n"
+        extracted = page.extract_text()
+        if extracted:
+            text += extracted + "\n"
     return text
 
 def analyze_report(content, file_type="text"):
@@ -48,7 +63,7 @@ def analyze_report(content, file_type="text"):
     try:
         if file_type == "text":
             response = client.chat.completions.create(
-                model="grok-2-latest",
+                model=text_model,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"Here is the medical report text:\n\n{content}"}
@@ -58,7 +73,7 @@ def analyze_report(content, file_type="text"):
         else:
             base64_image = base64.b64encode(content).decode('utf-8')
             response = client.chat.completions.create(
-                model="grok-2-vision-latest",
+                model=vision_model,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {
